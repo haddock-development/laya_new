@@ -13,7 +13,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # DGX Spark override selects cu130. Bump TORCH_VERSION deliberately; the check
 # below fails the build if the wheel does not match the requested index.
 ARG TORCH_INDEX=cpu
-ARG TORCH_VERSION=2.14.0
+ARG TORCH_VERSION=2.7.1
 COPY docker/check_torch.py /opt/check_torch.py
 RUN pip install "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/${TORCH_INDEX} \
     && python /opt/check_torch.py "${TORCH_INDEX}" \
@@ -52,7 +52,10 @@ COPY --from=build /opt/venv /opt/venv
 COPY LICENSE /usr/share/doc/laya/LICENSE
 COPY examples/docker/ /opt/laya/examples/
 COPY docker/entrypoint.py /opt/laya/entrypoint.py
-USER laya
+# Docker secrets mounted from a local file are root-readable only.  The
+# entrypoint reads them during startup and then irreversibly switches to laya
+# before it executes the application process.
+USER root
 WORKDIR /home/laya
 
 ENTRYPOINT ["python", "/opt/laya/entrypoint.py"]

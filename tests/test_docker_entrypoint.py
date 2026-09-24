@@ -1,12 +1,21 @@
 """Exercise secret-file handling across the container command boundary."""
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ENTRYPOINT = Path(__file__).resolve().parents[1] / "docker" / "entrypoint.py"
+
+
+def load_entrypoint_module():
+    spec = importlib.util.spec_from_file_location("laya_docker_entrypoint", ENTRYPOINT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class EntrypointTests(unittest.TestCase):
@@ -58,6 +67,30 @@ class EntrypointTests(unittest.TestCase):
                                 capture_output=True, text=True, check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("command is required", result.stderr)
+
+    def test_root_startup_drops_to_the_dedicated_laya_account(self):
+        entrypoint = load_entrypoint_module()
+        with mock.patch.object(entrypoint.os, "geteuid", return_value=0), \
+             mock.patch.object(entrypoint.os, "setgroups") as setgroups, \
+             mock.patch.object(entrypoint.os, "setgid") as setgid, \
+             mock.patch.object(entrypoint.os, "setuid") as setuid:
+            entrypoint.drop_privileges_if_root()
+
+        setgroups.assert_called_once_with([])
+        setgid.assert_called_once_with(10001)
+        setuid.assert_called_once_with(10001)
+
+    def test_non_root_startup_keeps_its_current_identity(self):
+        entrypoint = load_entrypoint_module()
+        with mock.patch.object(entrypoint.os, "geteuid", return_value=10001), \
+             mock.patch.object(entrypoint.os, "setgroups") as setgroups, \
+             mock.patch.object(entrypoint.os, "setgid") as setgid, \
+             mock.patch.object(entrypoint.os, "setuid") as setuid:
+            entrypoint.drop_privileges_if_root()
+
+        setgroups.assert_not_called()
+        setgid.assert_not_called()
+        setuid.assert_not_called()
 
 
 if __name__ == "__main__":

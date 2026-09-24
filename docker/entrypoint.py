@@ -6,6 +6,20 @@ import sys
 # Both names are read as `<NAME>_FILE` and then moved into `<NAME>`, so a secret can be
 # mounted as a file instead of passed in the environment.
 SECRET_NAMES = ("HF_TOKEN", "LAYA_API_KEY")
+LAYA_UID = 10001
+LAYA_GID = 10001
+
+
+def drop_privileges_if_root():
+    """Run the application as the image's dedicated unprivileged account."""
+    if os.geteuid() != 0:
+        return
+    try:
+        os.setgroups([])
+        os.setgid(LAYA_GID)
+        os.setuid(LAYA_UID)
+    except OSError:
+        sys.exit("Cannot switch to the unprivileged laya service account")
 
 
 def main():
@@ -23,6 +37,7 @@ def main():
         os.environ.pop(name + "_FILE", None)
     if len(sys.argv) < 2:
         sys.exit("A container command is required")
+    drop_privileges_if_root()
     os.execvp(sys.argv[1], sys.argv[1:])
 
 

@@ -111,8 +111,10 @@ override of `compose.yaml`, so cache and image settings stay in one place.
 
 `HF_TOKEN_FILE` reads a mounted UTF-8 file at startup, trims surrounding
 whitespace and takes precedence over `HF_TOKEN`. Unreadable, empty or invalid
-files stop startup without printing their contents. The file must be readable
-by UID 10001. `_FILE` applies only to supported secrets, not every setting.
+files stop startup without printing their contents. The entrypoint may read a
+root-owned Docker secret during this short startup phase, then irreversibly
+drops to UID/GID 10001 before it starts Laya. `_FILE` applies only to supported
+secrets, not every setting.
 
 With `HF_TOKEN_PATH` pointing to an existing host file outside the checkout:
 
@@ -159,8 +161,8 @@ docker compose run --rm --volume "$PWD:/workspace:ro" --workdir /workspace laya 
   sh -ec 'python tests/test_router.py; python tests/test_criteria.py; python tests/test_docker_entrypoint.py'
 ```
 
-Rebuild with `--build` after changing source or the bundled example. The image
-runs as UID/GID 10001. New named volumes inherit the image cache directory's
+Rebuild with `--build` after changing source or the bundled example. The Laya
+server runs as UID/GID 10001. New named volumes inherit the image cache directory's
 ownership; host directories must be writable by that UID. Keep model caches
 writable for tokenizer compatibility updates.
 
@@ -243,4 +245,3 @@ docker compose -f compose.yaml -f compose.http.yaml run --rm \
   -e LAYA_API_KEY_FILE=/run/secrets/laya_api_key \
   --service-ports laya-serve
 ```
-

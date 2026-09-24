@@ -159,12 +159,38 @@ def _apply_thread_limit():
     return n
 
 
+class _PinnedAgentRouter:
+    """Minimal Router-compatible wrapper for one explicitly local checkpoint.
+
+    A fine-tuned checkpoint is one complete model, not the three-checkpoint
+    public Router bundle.  Loading it through Router would make a language
+    switch attempt a network download, or load it twice.  This wrapper keeps
+    the HTTP contract while pinning every request to the supplied local Agent.
+    """
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.loaded = ["local"]
+
+    def predict(self, state, questions, model=None):
+        del model
+        return self.agent.predict(state, questions)
+
+
 def build_router():
     """Build a Router from the environment, preloading unless told otherwise."""
     from .router import Router
 
     _apply_thread_limit()
     device = os.environ.get("LAYA_DEVICE") or None
+    model_path = os.environ.get("LAYA_MODEL_PATH", "").strip()
+    requested_model = os.environ.get("LAYA_MODEL", "auto").strip() or "auto"
+    if model_path:
+        if requested_model != "auto":
+            raise ValueError("Set either LAYA_MODEL or LAYA_MODEL_PATH, not both")
+        from .agent import load
+
+        return _PinnedAgentRouter(load(model_path, device=device))
     models_env = os.environ.get("LAYA_MODELS", "").strip()
     preload_names = [m.strip() for m in models_env.split(",") if m.strip()] or None
     router = Router(device=device, auto_task_detection=_env_bool("LAYA_AUTO_TASK", False))

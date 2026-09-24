@@ -15,6 +15,7 @@ from laya.serve import (  # noqa: E402
     _apply_thread_limit,
     _env_bool,
     _resolve_model,
+    build_router,
     create_app,
 )
 
@@ -38,6 +39,15 @@ class FakeRouter:
             "usage": {"input_tokens": 42, "output_tokens": 0},
             "routing": {"model": "english", "reason": "English Latin text"},
         }
+
+
+class FakeAgent:
+    def __init__(self):
+        self.calls = []
+
+    def predict(self, state, questions):
+        self.calls.append({"state": state, "questions": questions})
+        return {"answers": {}, "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 
 def _client(monkeypatch, api_key=None):
@@ -84,6 +94,30 @@ def test_published_model_id_is_honoured(monkeypatch, model, expected):
     client, fake = _client(monkeypatch)
     client.post("/v1/systemone", json={**REQ, "model": model})
     assert fake.calls[0]["model"] == expected
+
+
+def test_local_model_path_loads_one_pinned_agent_without_router_downloads(monkeypatch):
+    agent = FakeAgent()
+    calls = []
+    monkeypatch.setenv("LAYA_MODEL_PATH", "/models/local")
+    monkeypatch.setenv("LAYA_MODEL", "auto")
+    monkeypatch.setenv("LAYA_PRELOAD", "1")
+    monkeypatch.setattr("laya.agent.load", lambda path, device: calls.append((path, device)) or agent)
+
+    router = build_router()
+
+    assert calls == [("/models/local", None)]
+    assert router.loaded == ["local"]
+    assert router.predict("state", {"q": {}}) == {"answers": {}, "usage": {"input_tokens": 0, "output_tokens": 0}}
+    assert agent.calls == [{"state": "state", "questions": {"q": {}}}]
+
+
+def test_local_model_path_rejects_an_alias_that_would_be_ignored(monkeypatch):
+    monkeypatch.setenv("LAYA_MODEL_PATH", "/models/local")
+    monkeypatch.setenv("LAYA_MODEL", "english")
+
+    with pytest.raises(ValueError, match="either LAYA_MODEL or LAYA_MODEL_PATH"):
+        build_router()
 
 
 def test_missing_questions_is_400(monkeypatch):
